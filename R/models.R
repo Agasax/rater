@@ -77,22 +77,22 @@ validate_parameters <- function(pars) {
   if (!is.null(alpha) && !is.numeric(alpha)) {
       stop("alpha must be a numeric vector", call. = FALSE)
   }
-  if (!is.null(beta) && !is.matrix(beta)) {
+  if (!is.null(beta) && !is.matrix(beta) && !is.array(beta)) {
       stop("beta must be a square numeric matrix", call. = FALSE)
   }
   # need to test both are not NULL!!!
-  if (!is.null(alpha) && !is.null(beta) && (length(alpha) != unique(dim(beta)))) {
+  if (!is.null(alpha) && !is.null(beta) && (length(alpha) != unique(dim(beta))) && (length(alpha) != unique(dim(beta))[2] ))  {
       stop("alpha and beta must have the same dimensions", call. = FALSE)
   }
 }
 
 # takes the list of parameters - alpha/beta
 compute_K <- function(pars) {
-   # no K values specified
+  # no K values specified
   if (is.null(unlist(pars))) {
     NULL
   } else {
-    ks <- c(length(pars$alpha), unique(dim(pars$beta)))
+    ks <- c(length(pars$alpha), if (!is.array(pars$beta)) unique(dim(pars$beta)) else unique(dim(pars$beta))[2])
     # Note:
     # we assume here that the consistency of parameter
     # dimensions has already been checked
