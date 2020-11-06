@@ -52,3 +52,4 @@ z_to_long_format <- function(par) {
   rownames(out) <- sprintf("z[%s]", 1:I)
   out
 }
+

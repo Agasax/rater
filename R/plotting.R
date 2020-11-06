@@ -12,13 +12,17 @@
 #'
 plot_pi <- function(fit) {
   pi <- pi_point_estimate(fit)
+  pi_ci <- as.data.frame(posterior_interval(fit,pars="pi"))
   plot_data <- data.frame(cat = as.factor(1:length(pi)),
                           pi = pi,
-                          round_pi = round(pi, 2))
+                          round_pi = round(pi, 2),
+                          upper=pi_ci$"95%",
+                          lower=pi_ci$"5%")
 
   plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$cat, y = .data$pi)) +
-    ggplot2::geom_bar(stat = "identity", fill = "steelblue") +
-    ggplot2::geom_text(ggplot2::aes(label = .data$round_pi), vjust = -3) +
+    ggplot2::geom_point(stat="identity")+
+    ggplot2::geom_errorbar (mapping = ggplot2::aes(ymin=.data$lower,ymax=.data$upper)) +
+    ggplot2::geom_text(ggplot2::aes(label = .data$round_pi), hjust = -.5) +
     ggplot2::coord_cartesian(ylim = c(0, 1)) +
     ggplot2::labs(x = "Category",
                   y = "Prevalence prob.") +
@@ -27,6 +31,38 @@ plot_pi <- function(fit) {
 
   plot
 }
+
+#' Plot the posterior distribution of prevalence probabilities
+#'
+#' @param fit A rater fit object
+#'
+#' @importFrom ggplot2 ggplot aes geom_bar geom_text coord_cartesian labs
+#'     theme_bw
+#'
+#' @importFrom tidybayes stat_eye
+#' @importFrom tidyr pivot_longer
+#' @importFrom dplyr everything
+#' @return A plot of posterior distributions of prevalence probabilities of latent classes
+#' @export
+#'
+#'
+plot_pi_dist <- function(fit) {
+  pi_data <- as.data.frame(posterior_samples(fit,pars="pi"))
+  pi_data <- tidyr::pivot_longer(pi_data,cols=dplyr::everything(),values_to="pi",names_to="cat",names_prefix="pi.", names_ptypes=factor())
+  #pi_mean <- dplyr::group_by(pi_data,cat)
+  #pi_mean<- dplyr::summarise( pi_mean, cat=unique(cat), label=round(mean(pi),2), pi_mean=mean(pi) )
+  plot <- ggplot2::ggplot(pi_data, ggplot2::aes(x = .data$cat, y = .data$pi)) +
+    tidybayes::stat_eye(fill = "steelblue") +
+    #ggplot2::geom_text(data=pi_mean,mapping=ggplot2::aes(label = .data$label,y=.data$pi_mean,x=.data$cat), hjust = -.9) +
+    ggplot2::coord_cartesian(ylim = c(0, 1)) +
+    ggplot2::labs(x = "Category",
+                  y = "Prevalence prob.") +
+    ggplot2::theme_bw() +
+    NULL
+
+  plot
+}
+
 
 #' Plot the rater accuracy estimates
 #'
