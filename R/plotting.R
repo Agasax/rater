@@ -1,8 +1,12 @@
 #' Plot the prevalence estimates
 #'
 #' @param fit A rater fit object.
-#'
-#' @return A plot of the prevalence estimates extracted from the fit.
+#' @param prob A single probability. The size of the credible interval
+#'   returned, if the fit is an `mcmc_fit`. Silently ignored if a the fit is
+#'   an `optim_fit` object. By default 0.9.
+#' @return A plot of the prevalence estimates extracted from the fit. If the
+#'   fit is a `mcmc_fit` this will include credible intervals, if it is an
+#'   `optim_fit` it will not.
 #'
 #' @importFrom ggplot2 ggplot aes geom_bar geom_text coord_cartesian labs
 #'     theme_bw
@@ -10,20 +14,60 @@
 #'
 #' @noRd
 #'
-plot_pi <- function(fit) {
-  pi <- pi_point_estimate(fit)
-  plot_data <- data.frame(cat = as.factor(1:length(pi)),
-                          pi = pi,
-                          round_pi = round(pi, 2))
+plot_pi <- function(fit, prob = 0.9) {
+  UseMethod("plot_pi")
+}
+
+#' @rdname plot_pi
+#' @noRd
+plot_pi.mcmc_fit <- function(fit, prob = 0.9) {
+  pi <- point_estimate(fit, pars = "pi")[[1]]
+
+  # Here we know that the fit is an `mcmc_fit` so this will work.
+  pi_cred_int <- posterior_interval(fit, prob = prob, pars = "pi")
+
+  plot_data <- data.frame(
+    cat = factor(paste0("Class ", 1:length(pi)),
+                 levels = paste0("Class ", length(pi):1)),
+    pi = pi,
+    pi_lower = pi_cred_int[, 1],
+    pi_upper = pi_cred_int[, 2]
+  )
+
+  percent <- paste0(prob * 100, "%")
+  plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$cat, y = .data$pi)) +
+    ggplot2::geom_point(size = 2, colour = "steelblue") +
+    ggplot2::geom_errorbar(ggplot2::aes(ymin = .data$pi_lower,
+                                        ymax = .data$pi_upper),
+                           width = 0.15, colour = "steelblue") +
+    ggplot2::coord_flip(ylim = c(0, 1)) +
+    ggplot2::scale_y_continuous(breaks = seq(0, 1, by = 0.2)) +
+    ggplot2::labs(x = "",
+                  y = "Prevalence probability",
+                  caption = paste0(percent, " credible intervals")) +
+    ggplot2::theme_bw()
+
+  plot
+}
+
+#' @rdname plot_pi
+#' @noRd
+plot_pi.optim_fit <- function(fit, prob = 0.9) {
+   pi <- point_estimate(fit, pars = "pi")[[1]]
+
+  plot_data <- data.frame(
+    cat = factor(paste0("Class ", 1:length(pi)),
+                 levels = paste0("Class ", length(pi):1)),
+    pi = pi
+  )
 
   plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$cat, y = .data$pi)) +
-    ggplot2::geom_bar(stat = "identity", fill = "steelblue") +
-    ggplot2::geom_text(ggplot2::aes(label = .data$round_pi), vjust = -3) +
-    ggplot2::coord_cartesian(ylim = c(0, 1)) +
-    ggplot2::labs(x = "Category",
-                  y = "Prevalence prob.") +
-    ggplot2::theme_bw() +
-    NULL
+    ggplot2::geom_point(size = 2, colour = "steelblue") +
+    ggplot2::coord_flip(ylim = c(0, 1)) +
+    ggplot2::scale_y_continuous(breaks = seq(0, 1, by = 0.2)) +
+    ggplot2::labs(x = "",
+                  y = "Prevalence probability") +
+    ggplot2::theme_bw()
 
   plot
 }
@@ -86,7 +130,7 @@ plot_theta <- function(fit, which = NULL) {
 
 #' Plot the latent class estimates of a rater fit.
 #'
-#' @param x numeric matrix object
+#' @param fit A `rater_fit` object.
 #' @param ... Other arguments
 #'
 #' @return Plot of the rate accuracy estimates
@@ -97,22 +141,34 @@ plot_theta <- function(fit, which = NULL) {
 #'
 #' @noRd
 #'
-plot_class_probabilities <- function(fit) {
+plot_class_probabilities <- function(fit, item_index = NULL) {
 
   x <- class_probabilities(fit)
-
-  # We could validate more stringently here if required
-  if (!is.numeric(x)) {
-    stop("Can only plot numeric matrices.", call. = FALSE)
-  }
-
   I <- nrow(x)
   K <- ncol(x)
 
-  plot_data <- data.frame(x = factor(rep(1:K, each = I), levels = 1:K),
-                          y = factor(rep(1:I, K), levels = I:1),
-                          prob = as.vector(x),
-                          round_prob = round(as.vector(x), 2))
+  if (is.null(item_index)) {
+    plot_data <- data.frame(
+      x = factor(rep(1:K, each = I), levels = 1:K),
+      y = factor(rep(1:I, K), levels = I:1),
+      prob = as.vector(x),
+      round_prob = round(as.vector(x), 2)
+    )
+  } else {
+
+    if (!is.numeric(item_index) || !(item_index %in% 1:I)) {
+      stop("`item_index` must be a numeric vector with elements in 1:I",
+           call. = FALSE)
+    }
+
+    x <- x[item_index, ]
+    plot_data <- data.frame(
+      x = factor(rep(1:K, each = length(item_index)), levels = 1:K),
+      y = factor(rep(item_index, K), levels = rev(item_index)),
+      prob = as.vector(x),
+      round_prob = round(as.vector(x), 2)
+    )
+  }
 
   plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$x, y = .data$y)) +
     ggplot2::geom_tile(ggplot2::aes(fill = .data$prob), colour = "black") +

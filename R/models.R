@@ -11,33 +11,127 @@ NULL
 #' @rdname models
 #'
 #' @param alpha prior parameter for pi
-#' @param beta prior parameter for theta
+#' @param beta prior parameter for theta. This can either be a K * K matrix, in
+#'   which case it is interpreted as the prior parameter of all of the J
+#'   raters, or a J by K by K array in which case it is the fully specified
+#'   prior parameter for all raters. (Here K is the number of categories in the
+#'   data and J is the number of raters in the data.)
+#'
+#' @examples
+#' # Model with default prior parameters:
+#' default_m <- dawid_skene()
+#'
+#' # Changing alpha:
+#' set_alpha_m <- dawid_skene(alpha = c(2, 2, 2))
+#'
+#' # Changing beta, single matrix:
+#' # (See details for how this is interpreted.)
+#' beta_mat <- matrix(1, nrow = 4, ncol = 4)
+#' diag(beta_mat) <- 4
+#' beta_mat_m <- dawid_skene()
+#'
+#' # The above is equivalent (when the model is fit - see details) to:
+#' beta_array <- array(NA, dim = c(2, 4, 4))
+#' for (i in 1:2) {
+#'   beta_array[i, , ] <- beta_mat
+#' }
+#' beta_array_m <- dawid_skene(beta = beta_array)
+#'
+#' # But you can also specify an array where each slice is different.
+#' # (Again, see details for how this is interpreted.)
+#' beta_array[1, , ] <- matrix(1, nrow = 4, ncol = 4)
+#' beta_array_m <- dawid_skene(beta = beta_array)
 #'
 #' @export
 #'
 dawid_skene <- function(alpha = NULL, beta = NULL) {
-  parameters <- list(alpha = alpha, beta = beta)
-  validate_parameters(parameters)
-  m <- list(parameters = parameters,
+  validate_alpha(alpha)
+
+  # `beta` can either be a K * K matrix which we interpret as the prior on the
+  # error matrix on each of the raters as in {1.0.0} or a J * K * K array, the
+  # set of priors on the error matrices of the J raters.
+
+  if (!is.null(beta) && !is.matrix(beta) && !is.array(beta)) {
+    stop("beta must be a numeric matrix or array", call. = FALSE)
+  }
+
+  alpha_k <- NULL
+  beta_k <- NULL
+
+  # Beta as matrix case.
+  if (is.matrix(beta)) {
+
+    # Test if the matrix is square.
+    if (nrow(beta) != ncol(beta)) {
+      stop("beta must a square matrix", call. = FALSE)
+    }
+
+    beta_k <- unique(dim(beta))
+  }
+
+  # Beta as array case.
+  if (is.array(beta) && length(dim(beta)) > 2) {
+
+    if (length(dim(beta)) != 3) {
+      stop("`beta` must be a 3 dimensional array", call. = FALSE)
+    }
+
+    if (length(unique(dim(beta)[2:3])) != 1) {
+      stop("Subslices of `beta` must be square matrices.", call. = FALSE)
+    }
+
+    beta_k <- unique(dim(beta)[2:3])
+  }
+
+  if (is.numeric(alpha)) {
+    alpha_k <- length(alpha)
+  }
+
+  ks <- c(alpha_k, beta_k)
+
+  # ks will be NULL if both alpha and beta are not specified.
+  if (is.null(ks)) {
+    K <- NULL
+  } else {
+    if (length(unique(ks)) > 1) {
+      # FIXME: Make this error more informative.
+      stop("`alpha` and `beta` are not compatible.", call. = FALSE)
+    } else {
+      K <- unique(ks)
+    }
+  }
+
+  m <- list(parameters = list(alpha = alpha, beta = beta),
             name = "Bayesian Dawid and Skene Model",
             file = "dawid_skene",
-            K = compute_K(parameters))
+            K = K)
   class(m) <- c("dawid_skene", "rater_model")
   m
 }
 
 #' @rdname models
 #'
+#' @param alpha prior parameter for pi
+#'
+#' @examples
+#' # Default:
+#' hier_dawid_skene()
+#'
+#' # Changing alpha
+#' hier_dawid_skene(alpha = c(2, 2))
+#'
 #' @export
 #'
 hier_dawid_skene <- function(alpha = NULL) {
-  # Note: this does not allow the user to change the N(0, 1) hyperpriors
-  parameters <- list(alpha = alpha)
-  validate_parameters(parameters)
-  m <- list(parameters = parameters,
+  # Note: this does not allow the user to change the N(0, 1) hyperpriors.
+  validate_alpha(alpha)
+
+  K <- if (!is.null(alpha)) length(alpha) else NULL
+
+  m <- list(parameters = list(alpha = alpha),
             name = "Bayesian Hierarchical Dawid and Skene Model",
             file = "hierarchical_dawid_skene",
-            K = compute_K(parameters))
+            K = K)
   class(m) <- c("hier_dawid_skene", "rater_model")
   m
 }
@@ -47,36 +141,46 @@ hier_dawid_skene <- function(alpha = NULL) {
 #' @param beta_1 First on diagonal prior probability parameter
 #' @param beta_2 Second on diagonal prior probability parameter for theta
 #'
+#' @examples
+#' # Default:
+#' class_conditional_dawid_skene()
+#'
+#' # Not default:
+#' class_conditional_dawid_skene(
+#'   alpha = c(2, 2),
+#'   beta_1 = c(4, 4),
+#'   beta_2 = c(2, 2)
+#' )
+#'
 #' @export
 #'
 class_conditional_dawid_skene <- function(alpha = NULL,
                                           beta_1 = NULL,
                                           beta_2 = NULL) {
-  parameters <- list(alpha = alpha, beta_1 = beta_1, beta_2 = beta_2)
-  validate_parameters(parameters)
-  m <- list(parameters = parameters,
+  validate_alpha(alpha)
+
+  # length(NULL) = 0.
+  ks <- c(length(alpha), length(beta_1), length(beta_2))
+  ks <- ks[ks > 0]
+
+  if (length(unique(ks)) > 1) {
+    stop("Prior parameters are not compatible.", call. = FALSE)
+  }
+  K <- if (length(ks) > 0) unique(ks) else NULL
+
+  m <- list(parameters = list(alpha = alpha, beta_1 = beta_1, beta_2 = beta_2),
             name = "Bayesian Class conditional Dawid and Skene Model",
             file = "class_conditional_dawid_skene",
-            K = compute_K(parameters))
+            K = K)
   class(m) <- c("class_conditional_dawid_skene", "rater_model")
   m
 }
 
-#' Validate passed parameters
-#'
-#' Checks the parameter are of the appropriate type/form and that they are
-#' self consistent
-#'
-#' @param pars a (named) list of parameters
-#'
-#' @noRd
-#'
-validate_parameters <- function(pars) {
-  beta <- pars$beta
-  alpha <- pars$alpha
+validate_alpha <- function(alpha) {
   if (!is.null(alpha) && !is.numeric(alpha)) {
       stop("alpha must be a numeric vector", call. = FALSE)
   }
+<<<<<<< HEAD
   if (!is.null(beta) && !is.matrix(beta) && !is.array(beta)) {
       stop("beta must be a square numeric matrix", call. = FALSE)
   }
@@ -99,4 +203,6 @@ compute_K <- function(pars) {
     # stopifnot(length(unique(ks)) != 1)
     ks[ks > 0]
   }
+=======
+>>>>>>> b71f63b34a6b42cdcf2f19e1e23fe3e113c21b52
 }

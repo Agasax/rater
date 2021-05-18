@@ -16,7 +16,11 @@ class_conditional_dawid_skene(alpha = NULL, beta_1 = NULL, beta_2 = NULL)
 \arguments{
 \item{alpha}{prior parameter for pi}
 
-\item{beta}{prior parameter for theta}
+\item{beta}{prior parameter for theta. This can either be a K * K matrix, in
+which case it is interpreted as the prior parameter of all of the J
+raters, or a J by K by K array in which case it is the fully specified
+prior parameter for all raters. (Here K is the number of categories in the
+data and J is the number of raters in the data.)}
 
 \item{beta_1}{First on diagonal prior probability parameter}
 
@@ -28,4 +32,46 @@ a rater model object that can be passed to \code{\link[=rater]{rater()}}.
 \description{
 Functions to set up models and change their prior
 parameters for use in \code{\link[=rater]{rater()}}.
+}
+\examples{
+# Model with default prior parameters:
+default_m <- dawid_skene()
+
+# Changing alpha:
+set_alpha_m <- dawid_skene(alpha = c(2, 2, 2))
+
+# Changing beta, single matrix:
+# (See details for how this is interpreted.)
+beta_mat <- matrix(1, nrow = 4, ncol = 4)
+diag(beta_mat) <- 4
+beta_mat_m <- dawid_skene()
+
+# The above is equivalent (when the model is fit - see details) to:
+beta_array <- array(NA, dim = c(2, 4, 4))
+for (i in 1:2) {
+  beta_array[i, , ] <- beta_mat
+}
+beta_array_m <- dawid_skene(beta = beta_array)
+
+# But you can also specify an array where each slice is different.
+# (Again, see details for how this is interpreted.)
+beta_array[1, , ] <- matrix(1, nrow = 4, ncol = 4)
+beta_array_m <- dawid_skene(beta = beta_array)
+
+# Default:
+hier_dawid_skene()
+
+# Changing alpha
+hier_dawid_skene(alpha = c(2, 2))
+
+# Default:
+class_conditional_dawid_skene()
+
+# Not default:
+class_conditional_dawid_skene(
+  alpha = c(2, 2),
+  beta_1 = c(4, 4),
+  beta_2 = c(2, 2)
+)
+
 }

@@ -13,8 +13,9 @@
 #'   prior parameters will be set to their default values.
 #' @param method A length 1 character vector, either `"mcmc"` or `"optim"`.
 #'   This will be fitting method used by Stan. By default `"mcmc"`
-#' @param data_format A length 1 character vector, either `"long"` or
+#' @param data_format A length 1 character vector, `"long"`, `"wide"` and
 #'   `"grouped"`. The format that the passed data is in. Defaults to `"long"`.
+#'   See `vignette("data-formats)` for details.
 #' @param inits The initialization points of the fitting algorithm
 #' @param verbose Should `rater()` produce information about the progress
 #'   of the chains while using the MCMC algorithm. Defaults to `TRUE`
@@ -56,7 +57,7 @@ rater <- function(data,
                   ...) {
 
   method <- match.arg(method, choices = c("mcmc", "optim"))
-  data_format <- match.arg(data_format, choices = c("long", "grouped"))
+  data_format <- match.arg(data_format, choices = c("long", "grouped", "wide"))
 
   model <- validate_model(model)
   data <- validate_input(data, model, data_format)
@@ -67,10 +68,19 @@ rater <- function(data,
   check_K(stan_data_list, model)
 
   # Create the full passed info for stan and the initialisation points.
+<<<<<<< HEAD
   stan_data <- c(stan_data_list, parse_priors(model, stan_data_list$J, stan_data_list$K))
+=======
+  priors <- parse_priors(model, stan_data_list$K, stan_data_list$J)
+
+  if (method == "optim" && inherits(model, "dawid_skene")) {
+    check_beta_values(priors$beta)
+  }
+  stan_data <- c(stan_data_list, priors)
+>>>>>>> b71f63b34a6b42cdcf2f19e1e23fe3e113c21b52
 
   if (is.null(inits)) {
-    inits <- creat_inits(model, stan_data_list)
+    inits <- create_inits(model, stan_data_list)
   }
 
   # TODO This could be made more complex if automatic switching is used.
@@ -110,17 +120,7 @@ rater <- function(data,
 #'
 as_stan_data <- function(data, data_format) {
 
-  if (data_format == "long") {
-     stan_data <- list(
-       N = nrow(data),
-       I = max(data$item),
-       J = max(data$rater),
-       K = max(data$rating),
-       ii = data$item,
-       jj = data$rater,
-       y = data$rating
-      )
-  } else if (data_format == "grouped") {
+  if (data_format == "grouped") {
     tally <- data[, ncol(data)]
     key <- data[, 1:(ncol(data) - 1)]
     stan_data <- list(
@@ -130,7 +130,25 @@ as_stan_data <- function(data, data_format) {
       key = key,
       tally = tally
     )
+    return(stan_data)
   }
+
+  if (data_format == "wide") {
+    # This also does validation.
+    data <- wide_to_long(data)
+  }
+
+  # The data must be in long format here.
+
+  stan_data <- list(
+    N = nrow(data),
+    I = max(data$item),
+    J = max(data$rater),
+    K = max(data$rating),
+    ii = data$item,
+    jj = data$rater,
+    y = data$rating
+  )
 
   stan_data
 }
@@ -139,41 +157,87 @@ as_stan_data <- function(data, data_format) {
 #'
 #' @param model The rater_model.
 #' @param K The number of categories in the data.
+<<<<<<< HEAD
 #' @param J The number of raters
+=======
+#' @param J The number of raters in the data
+#' @param method The passed fitting method.
+#'
+>>>>>>> b71f63b34a6b42cdcf2f19e1e23fe3e113c21b52
 #' @return The fully realised prior parameters
 #'
 #' @noRd
 #'
+<<<<<<< HEAD
 parse_priors <- function(model,J, K) {
   switch(get_file(model),
     "dawid_skene" = ds_parse_priors(model,J, K),
+=======
+parse_priors <- function(model, K, J) {
+  switch(get_file(model),
+    "dawid_skene" = ds_parse_priors(model, K, J),
+>>>>>>> b71f63b34a6b42cdcf2f19e1e23fe3e113c21b52
     "class_conditional_dawid_skene" =
       class_conditional_ds_parse_priors(model, K),
     "hierarchical_dawid_skene" = hier_ds_parse_priors(model, K),
     stop("Unsupported model type", call. = FALSE))
 }
 
+<<<<<<< HEAD
 ds_parse_priors <- function(model,J, K) {
+=======
+ds_parse_priors <- function(model, K, J) {
+>>>>>>> b71f63b34a6b42cdcf2f19e1e23fe3e113c21b52
   pars <- get_parameters(model)
+
   # This is the default uniform prior taken from the Stan manual.
   if (is.null(pars$alpha)) {
     pars$alpha <- rep(3, K)
   }
+
+  # We need to alter the passed beta if:
+  # 1. It is a matrix - and we need to convert it into an array.
+  # 2. It is null - we need to create the default prior.
+  # Ideally this would be done earlier but we need to to know J. The matrix
+  # has already been validated i.e. it is square.
+
+  # 1.
+  # Convert from matrix to array.
+  if (is.matrix(pars$beta)) {
+    beta_slice <- pars$beta
+    pars$beta <- array(dim = c(J, K, K))
+    for (j in 1:J) {
+      pars$beta[j, , ] <- beta_slice
+    }
+  }
+
+  # 2.
   # This prior parameter is based on conjugate priors for the simplified model
-  # where the true class in known. Here we match on the mean.
+  # where the true class in known.
   if (is.null(pars$beta)) {
-    N <- 7
-    p <- 0.65
+    N <- 8
+    p <- 0.6
     on_diag <- N * p
     off_diag <- N * (1 - p) / (K - 1)
+<<<<<<< HEAD
     beta <- matrix(off_diag, nrow = K, ncol = K)
     diag(beta) <- on_diag
     pars$beta <- array(dim=c(J,K,K))
     for (j in 1:J) {
       pars$beta[j,,] <- beta
 
+=======
+
+    beta_slice <- matrix(off_diag, nrow = K, ncol = K)
+    diag(beta_slice) <- on_diag
+
+    pars$beta <- array(dim = c(J,K,K))
+    for (j in 1:J) {
+      pars$beta[j, , ] <- beta_slice
+>>>>>>> b71f63b34a6b42cdcf2f19e1e23fe3e113c21b52
     }
   }
+
   pars
 }
 
@@ -190,10 +254,8 @@ class_conditional_ds_parse_priors <- function(model, K) {
   if (is.null(pars$alpha)) {
     pars$alpha <- rep(3, K)
   }
-  # These priors are selected so that, using the mean matching interpretation
-  # with N = 7, p = 0.64.
-  N <- 7
-  p <- 0.65
+  N <- 8
+  p <- 0.6
   if (is.null(pars$beta_1)) {
     pars$beta_1 <- rep(N * p, K)
   }
@@ -212,7 +274,7 @@ class_conditional_ds_parse_priors <- function(model, K) {
 #'
 #' @noRd
 #'
-creat_inits <- function(model, stan_data) {
+create_inits <- function(model, stan_data) {
   # better to have another short unique id...
   K <- stan_data$K
   J <- stan_data$J
@@ -312,7 +374,7 @@ validate_model <- function(model) {
       "dawid_skene" = dawid_skene(),
       "hier_dawid_skene" = hier_dawid_skene(),
       "class_conditional_dawid_skene" = class_conditional_dawid_skene(),
-      stop("Invalid model string specification.", .call = FALSE))
+      stop("Invalid model string specification.", call. = FALSE))
   }
 
   if (!is.rater_model(model)) {
@@ -336,7 +398,7 @@ validate_model <- function(model) {
 validate_input <- function(data, model, data_format) {
 
   if (data_format == "grouped" & !is.dawid_skene(model)) {
-    stop("Grouped data can only be used with the Dawid and Skene model",
+    stop("Grouped data can only be used with the Dawid and Skene model.",
          call. = FALSE)
   }
 
@@ -361,7 +423,7 @@ validate_data <- function(data, data_format) {
   # Note that this test for allow things like tibbles to be accepted. We
   # next use as.data.frame to standardise the input.
   if (!inherits(data, "data.frame") &&  !inherits(data, "matrix")) {
-    stop("`data` must be a data.frame or matrix.", call = FALSE)
+    stop("`data` must be a data.frame or matrix.", call. = FALSE)
   }
   data <- as.data.frame(data)
 
@@ -374,13 +436,26 @@ validate_data <- function(data, data_format) {
 
   if (data_format == "long") {
 
+    # The data probably isn't in long format.
+    if (ncol(data) > 3) {
+
+      # If there is a value greater than 30 then the data probability includes
+      # a count/tally as a 30 category rating would be silly.
+      if (max(data, na.rm = TRUE) > 30) {
+         message("Is your data in grouped format? Consider using `data_format = grouped`.")
+      } else {
+        # Probably just wide data.
+        message("Is your data in wide format? Consider using `data_format = wide`.")
+      }
+    }
+
     if (!ncol(data) == 3L) {
       stop("Long format `data` must have exactly three columns.", call. = FALSE)
     }
 
     if (!(all(c("rater", "item", "rating") %in% colnames(data)))) {
-      stop("Long `data` must have three columns with names: `rater`, `item`,",
-           "and `rating`.", call. = FALSE)
+      stop("Long `data` must have three columns with names: `rater`, `item`",
+           " and `rating`.", call. = FALSE)
     }
 
     # The following are errors about 0 elements. We try to show these errors
@@ -446,6 +521,24 @@ validate_data <- function(data, data_format) {
 
   }
 
+  # Case: wide data
+  # We don't need to validate wide data because wide_to_long already validates.
+
   data
 }
 
+check_beta_values <- function(beta) {
+
+  J <- dim(beta)[[1]]
+  problems <- logical(J)
+  for (j in 1:J) {
+    beta_j <- beta[j, , ]
+    problems[[j]] <- any(beta_j[row(beta_j) != col(beta_j)] < 1.0)
+  }
+  off_diag_problem <- any(problems)
+  if (off_diag_problem) {
+      warning("Optimization may not converge if the off diagonal elements of ",
+              "beta are less than 1. Consider changing the prior parameters.",
+              call. = FALSE)
+  }
+}
